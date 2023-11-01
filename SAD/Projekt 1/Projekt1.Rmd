@@ -1,0 +1,260 @@
+---
+title: "Projekt 1"
+author: "Mateusz Wroblewski"
+date: "5/7/2022"
+output: html_document
+---
+**Zadanie 1**
+
+Zaczynamy od wczytania niezbędnych bibliotek oraz importu danych.
+```{r results='hide',message=FALSE}
+library(ggplot2)
+library(GGally)
+library(dplyr)
+library(jmuOutlier)
+library(lmtest)
+```
+
+Następnie wczytujemy dane i poddajemy je podstawowej analizie
+```{r}
+ludzie <- read.csv("~/Desktop/studia2/stat/people.tab.csv", sep="", header=T)
+str(ludzie)
+summary(ludzie)
+sapply(ludzie, function(x) sum(is.na(x)))
+```
+Jak widać, mamy 500 obserwacji 6 zmiennych ilościowych - wiek, waga, wzrost, liczba dzieci, wydatki i oszczędności - oraz 3 zmiennych jakościowych - płeć, stan cywilny i budynek. Wystepują nieduże braki w danych - 38 obserwacji nie ma podanej płci. Obejrzyjmy teraz nasze dane wizualnie.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+ggpairs(ludzie)
+```
+Jak widać, występują zależności między niektórymi danymi, silną korelację możemy zaobserwować między innymi pomiędzy wagą i wzrostem oraz wiekiem  i oszczędnościami. Powyższe wykresy moglibyśmy zaprezentować z podziałem na płeć, jednak stają się mniej czytelne a nie pozwalają zaobserwować istotnych zależności.
+
+**Zadanie 2**
+
+Teraz spróbujmy przyjżeć się bliżej naszym danym.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+pairs(oszczednosci ~ . , data=ludzie[unlist(lapply(ludzie, is.numeric))])
+```
+Widzimy, tak jak poprzednio, silną zależność między oszczędnościami a wiekiem oraz między wagą a wzrostem. Więkoszość pozostałych wykresów tworzy "chmury" danych. Poza wykresami liczby dzieci, które z oczywistych przyczyn skupiają się na małym zbiorze wartości.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+ggplot(data=ludzie) + geom_boxplot(aes(x=wiek, col=plec)) + theme_minimal()
+
+```
+Wykres przedstawia wykres wieku respondentów w zależności od ich płci. Dostrzegamy wysokie podobieństwo wykresów pudełkowych, z nieznacznie wyższą medianą oraz kwartylami dla kobiet niż dla mężczyznych oraz 3 odstającymi obserwacjami dla mężczyzn przeciwko tylko jednej takiej obserwacji dla kobiet.
+
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+
+procent <- ludzie %>%
+  group_by(budynek) %>%
+  summarise(count = n() / nrow(.) )
+ggplot(procent, aes(x="", y=count, fill=budynek)) + geom_bar(stat="identity", width=1)+ coord_polar("y") + geom_text(aes(label = paste0(round(count*100), "%")), position = position_stack(vjust = 0.5))+ labs(x = NULL, y = NULL, fill = NULL, title = "Udzial procentowy budynkow")+theme_minimal()
+
+```
+Pamiętamy oczywiście, że do wykresów kołowych należy podchodzić z dystansem, gdyż często utrudniają zauważenie zależności. Tutaj jednak wyraźnie widać, że najwięcej z respondentów mieszka w domach jednorodzinnych, a najmniej w apartamentach i kamienicach.
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+ggplot(ludzie, aes(x=plec, y=oszczednosci, fill=plec)) + geom_violin() +theme_minimal()
+```
+Wykres przedstawia rozkład oszczędności w zależności od płci respondentów. Widzimy wyraźne podobieństwo otrzymanych rozkładów.
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+
+ggplot(ludzie, aes(x=wydatki, y=oszczednosci) ) +  stat_density_2d(aes(fill = ..level..), geom = "polygon", colour="black")
+```
+Na powyższym wykresie widzimy "mapę ciepła", czyli pokolorowany po gęstości wykres typu scatter-plot oszczędności od wydatków. Najczęstszym przypadkiem są wydatki rzędu około 2500 dla oszczędności rzędu około 350, i w miarę oddalania się od tych wartości ilość obserwacji maleje. 
+
+
+**Zadanie 3**
+
+Chcemy znaleźć p-wartości dla hipotezy $H_0:m_e = 165 $ dla zmiennej wzrost przeciwko hipotezie alternatywnej $H_0<165$. W tym celu chcielibyśmy skorzystać z testu Wilcoxona, ale aby to zrobić musimy upewnić się że nasze dane są rozłożone symetrycznie.
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+ggplot()+geom_histogram(aes(x=ludzie$wzrost), binwidth = sd(ludzie$wzrost)/3)
+```
+Jak widać, założenia testu są spełnione.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+med0 <- 165
+wilcox.test(ludzie$wzrost,  mu = med0, alternative = "l")
+
+```
+Otrzymaliśmy p-wartość 0.9999 - otrzymana p-wartość jest niepokojąco wysoka, daje silne poparcie dla hipotezy zerowej.
+Teraz będziemy testować średnią. Chcielibyśmy posłużyć się testem t-Studenta. Do tego jednak potrzebujemy założenia o normalności rozkładu zmiennej wzrost. Żeby sprawdzić prawdziwość tego założenia posłużymy się wykresem kwantyl-kwantyl.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+qqnorm(ludzie$wzrost)
+qqline(ludzie$wzrost)
+```
+Widzimy, że poza kilkoma nieznacznie odstającymi obserwacjami możemy uznać nasz rozkład za normalny, jednak te odstępstwa bierzemy pod uwagę przy interpretacji wyników. Naszą hipotezą jest $H_0:m = 170 $ dla zmiennej wzrost przeciwko hipotezie alternatywnej $H_0<170$
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+sr0 <- 170
+t.test(ludzie$wzrost, mu=sr0, alternative = "less")
+```
+Otrzymaliśmy p-wartość 0.01949 - na poziomie istotności 0.99 nie odrzucilibyśmy hipotezy zerowej, ale na poziomie istotności 0.95 już tak. Biorąc pod uwagę nieznaczne odstępstwa od normalności naszego rozkładu, do otrzymanej p-wartości podchodzimy raczej z dystansem.
+
+**Zadanie 4**
+
+Chcielibyśmy znaleźć przedziały ufności dla zmiennej wiek. Przyjrzyjmy się jej bliżej.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+ggplot() + geom_histogram(aes(x=ludzie$wiek), bins=28) +theme_minimal()
+```
+Otrzymany wykres wskazuje na rozkład w przybliżeniu normalny. Takie założenie bardzo ułatwiłoby nam znalezienie przedziałów, zanim jednak to zrobimy przyjrzyjmy się jeszcze wykresowi kwantyl-kwantyl.
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+qqnorm(ludzie$wiek)
+qqline(ludzie$wiek)
+```
+Wykresy wskazują, że nasz rozkład można przybliżyć normalnym, pamiętając że im dalej jesteśmy od tego przybliżenia tym bardziej otrzymane przez nas wyniki odbiegały będą od rzeczywistości, gdyż stojąca za nimi teoria nie jest w pełni zgodna z obserwacjami.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+t.test(ludzie$wiek, conf.level = 0.99)
+```
+Otrzymaliśmy przedział ufności (38.446 40.522). Teraz szukamy odchylenia standardowego. Posłużymy się wzorem z wykładu dla nieznanej średniej.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+Sn <- sd(ludzie$wiek)^2
+N <- length(ludzie$wiek)
+alpha <- 0.99
+lewy_kwantyl <- qchisq(p=1-alpha/2, df=N-1)
+lewy_kraniec <- sqrt(N*Sn/lewy_kwantyl)
+prawy_kwantyl <- qchisq(p=alpha/2, df=N-1)
+prawy_kraniec <- sqrt(N*Sn/prawy_kwantyl)
+lewy_kraniec
+prawy_kraniec
+```
+Otrzymalismy w ten sposób przedział (8.987781, 8.994919) na poziomie 0.99 dla odchylenia standardowego. 
+Teraz zajmiemy się obliczaniem przedziału dla kwantyli. Posłużymy się funkcją quantileCI z biblioteki jmuOutlier.
+```{r ,warning=FALSE, error=FALSE}
+przedzial_q_1_4 <- quantileCI(ludzie$wiek, probs = 0.25, conf.level = 0.99)
+przedzial_q_2_4 <- quantileCI(ludzie$wiek, probs = 0.5, conf.level = 0.99)
+przedzial_q_3_4 <- quantileCI(ludzie$wiek, probs = 0.75, conf.level = 0.99)
+
+```
+Dla kwantyla 1/4 dostaliśmy przedział 
+```{r ,warning=FALSE, error=FALSE}
+przedzial_q_1_4
+```
+Dla kwantyla 2/4 dostaliśmy przedział 
+```{r ,warning=FALSE, error=FALSE}
+przedzial_q_2_4
+```
+Dla kwantyla 3/4 dostaliśmy przedział 
+```{r ,warning=FALSE, error=FALSE}
+przedzial_q_3_4
+```
+
+**Zadanie 5**
+
+Będziemy testować hipotezę $H_0: \mu _{wzrost|zamężna/żonaty} = \mu _{wzrost|panna/kawaler}$ przeciwko hipotezie alternatywnej $H_1: \mu _{wzrost|zamężna/żonaty} \neq \mu _{wzrost|panna/kawaler}$. Upewnijmy się raz jeszcze, że zmienna wzrost ma rozkład normalny.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+qqnorm(ludzie[which(ludzie$stan_cywilny == FALSE),]$wzrost)
+qqline(ludzie[which(ludzie$stan_cywilny == FALSE),]$wzrost)
+```
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+qqnorm(ludzie[which(ludzie$stan_cywilny == TRUE),]$wzrost)
+qqline(ludzie[which(ludzie$stan_cywilny == TRUE),]$wzrost)
+```
+Więc nasze założenia są spełnione, możemy się więc posłużyć testem t-Studenta
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+t.test(x=ludzie[which(ludzie$stan_cywilny == FALSE),]$wzrost, y=ludzie[which(ludzie$stan_cywilny == TRUE),]$wzrost, df=liczba_singli+liczba_malz-2, paired = FALSE, alternative = "two.sided")
+
+```
+Otrzymaliśmy p-wartość $0.6661>0.01$ więc nie ma podstaw do odrzucenia hipotezy, że średni wzrost dla osób w związku małżeńskim jest taki sam jak dla osób nie będących w takim związku. 
+
+Teraz będziemy testować hipotezę $H_0:$ Wydatki są niezależne od wzrostu przeciwko hipotezie alternatywnej $H_1:$Wydatki są zaleźne od wzrostu. Posłużymy się testem niezaleźności chi-kwadrat.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+#hipoteza0 - wydatki nie zaleza od wzrostu
+chisq.test(x=ludzie$wydatki, y=ludzie$wzrost)
+
+```
+Dostaliśmy p-wartość $0.2585>0.01$ więc nie ma podstaw do odrzucenia hipotezy zerowej. Możemy nawet przypuszczać, że wydatki nie zależą od wzrostu (Zgodnie z intuicją).
+
+Teraz będziemy testować niezależność stanu cywilnego od płci. Posłużymy się testem dokładnym Fishera.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+
+#hipoteza 0 - stan cywilny nie zalezy od plci
+fisher.test(x=ludzie$plec, y=ludzie$stan_cywilny)
+```
+Otrzymaliśmy p-wartość $0.1179>0.01$, więc nie ma podstaw do odrzucenia hipotezy zerowej.
+
+Ostatnią hipotezą do przetestowania jest, że waga ma rozkład normalny ze średnią 80. Nie znamy średniej ani odchylenia standardowego, ale widzimy z wykresu że waga ma rozkład bliski normalnemu, więc posłużymy się testem t-Studenta.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+qqnorm(ludzie$waga)
+qqline(ludzie$waga)
+t.test(ludzie$waga, mu=80)
+```
+Otrzymaliśmy p-wartość mniejszą niż 0.01, co wskazuje na odrzucenie hipotezy zerowej
+
+
+**Zadanie 6**
+
+Szacujemy model regresji liniowej. Z wykresów z początku raportu widzimy, że transformacje nie są niezbędne - widzimy albo chmury danych, albo zależności liniowe. 
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+model=lm(ludzie$oszczednosci~ ., data=ludzie)
+summary(model)
+
+```
+Niezbędne wyniki widzimy w tabelce powyżej. Teraz będziemy poszukiwać zmiennej, którą z naszego modelu można wyrzucić. Na podstawie p-wartości oraz istotności w modelu pełnym nasuwa się dwóch kandydatów - płeć oraz stan cywilny.
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+rss <-list()
+adjusted_r_kwadrat <- list()
+for (i in 1:(length(ludzie)-1))
+{
+  model_i <- lm(oszczednosci~ ., data=ludzie[-i])
+  x <- summary(model_i)
+  rss[i] <- x[6]
+  adjusted_r_kwadrat[i] <- x[9]
+  
+}
+
+```
+Otrzymaliśmy
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+rss
+adjusted_r_kwadrat
+```
+$RSS$ jest minimalizowane po usunięciu stanu cywilnego, ale $R^2$ jest maksymalizowane po usunięciu płci. Różnice nie są jednak duże, więc pozwolę sobie jeszcze spojrzeć jak radzi sobie cały model po wyrzuceniu każdego z tych dwóch kandydatów.
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+model2 <- lm(oszczednosci~ ., data=ludzie[-4])
+summary(model2)
+
+
+```
+
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+
+model2 <- lm(oszczednosci~ ., data=ludzie[-5])
+summary(model2)
+
+```
+Widizmy że p-wartość dla stanu cywilnego po wyrzuceniu płci jest większa niż p-wartość płci po wyrzuceniu stanu cywilnego. Ponadto w wyjściowym modelu również mamy mniejszą p-wartość dla stanu cywilnego oraz $RSS$ jest mniejszy dla modelu z wyrzuconą płcią, a współczynnik $R^2$ w zaokrągleniu do 3 miejsca po przecinku są w przypadku obu rozważanych modeli takie same, dlatego ostatecznie decyduję się wyrzucić z naszego modelu płeć. Sprawdźmy czy w tak otrzymanym modelu spełnione są założenia modelu liniowego LINE. 
+
+
+Pierwszy wykres wskazuje, że zależność zmiennej objaśnianej jest rzeczywiście liniowa, więc nasze pierwsze założenie jest spełnionw
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+resettest(model2, power=2:3, type=c("fitted"))
+
+```
+
+Dostaliśmy p-wartość 0.05854, więc nie ma podstaw by podważać założenie o liniowości badanej zależności.
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+mean(model2$residuals)
+model_bez_stalej<- lm(oszczednosci ~ . -1, ludzie[-5])
+mean(model_bez_stalej$residuals)
+```
+
+Otrzymana wartość jest mniejsza, jednak jest istotnie mniejsza. Możemy jednak przyjąć że założenie dotyczące składnika losowego jest spełnione.
+Pozostałe założenia sprawdzimy używając wykresów diagnostycznych.
+
+```{r ,message=FALSE, warning=FALSE, error=FALSE}
+plot(model2)
+```
+
+Na podstawie pierwszego wykresu widzimy brak autokorelacji błędów oraz potwierdzamy liniową zależność między zmiennymi.
+
+Na postawie drugiego wykresu widzimy, że poza 4 outlier'ami rozkład błędów jest normalny.
+
+Wykres reszt standaryzowanych wskazuje, że obecna jest homoskedastyczność.
+
+Wykres dźwigni pozwala nam potwierdzić nasze wcześniejsze przypuszczenie o obecności outlier'ów, jednocześnie widzimy że mieszczą się one jednak w dystansie Cook'a.
